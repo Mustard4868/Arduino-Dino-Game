@@ -69,3 +69,15 @@ const dg_ot dg_object_types[] U8X8_PROGMEM =
     /*0: Empty object type*/
     {0,0,0, DG_DRAW_NONE, DG_JUMP_NONE, DG_DUCK_NONE, DG_IS_HIT_NONE},
 };
+
+//*list of all objects on screen*//
+#if RAMEND < 0x300
+#define DG_OBJ_CNT 25
+#else
+#define DG_OBJ_CNT 60
+#endif
+
+dg_obj dg_objects[DG_OBJ_CNT];
+
+//*about player model*//
+uint8_t dg_player_pos;
