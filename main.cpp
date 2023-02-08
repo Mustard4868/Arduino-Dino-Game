@@ -68,6 +68,18 @@ const dg_ot dg_object_types[] U8X8_PROGMEM =
 {
     /*0: Empty object type*/
     {0,0,0, DG_DRAW_NONE, DG_JUMP_NONE, DG_DUCK_NONE, DG_IS_HIT_NONE},
+    /*1: Wall, player end*/
+    {2,1,30, DG_DRAW_BBOX, DG_MOVE_X_PROP, DG_IS_HIT_WALL},
+    /*2: DG_OT_CACTUS_HIGH*/
+    {2,1,0, DG_DRAW_CACTUS_HIGH, DG_DRAW_BBOX, DG_MOVE_X_PROP, DG_IS_HIT_BBOX},
+    /*3: DG_OT_CACTUS_WIDE*/
+    {2,1,0, DG_DRAW_CACTUS_WIDE, DG_DRAW_BBOX, DG_MOVE_X_PROP, DG_IS_HIT_BBOX},
+    /*4: DG_OT_CACTUS_NORM*/
+    {2,1,0, DG_DRAW_CACTUS_NORM, DG_DRAW_BBOX, DG_MOVE_X_PROP, DG_IS_HIT_BBOX},
+    /*5: DG_OT_BIRD*/
+    {2,1,0, DG_DRAW_BIRD, DG_DRAW_BBOX, DG_MOVE_X_PROP, DG_IS_HIT_BBOX},
+    /*6: DG_OT_PLAYER*/
+    {0,2,0, DG_DRAW_PLAYER, DG_JUMP_PLAYER, DG_DUCK_PLAYER, DG_IS_HIT_BBOX, DG_IS_HIT_WALL},
 };
 
 //*list of all objects on screen*//
@@ -86,3 +98,98 @@ uint8_t dg_player_pos;
 #define DG_SCORE_MULTIPLIER 1
 uint16_t dg_player_score;
 uint16_t dg_highscore = 0;
+
+//*overall game state*//
+#define DG_STATE_MENU 0
+#define DG_STATE_INITIALIZE 1
+#define DG_STATE_GAME 2
+#define DG_STATE_END 3
+#define DG_STATE_IEND 4
+
+uint8_t dg_state = DG_STATE_MENU;
+
+//*game difficulty*//
+uint8_t dg_difficulty = 1;
+#define DG_DIFF_VIS_LEN 30
+#define DG_DIFF_FP 5
+uint16_t dg_to_diff_cnt = 0;
+
+//*bitmaps*//
+
+
+
+//*forward definitions*//
+uint8_t dg_rnd() U8X8_NOINLINE;
+static dg_obj *dg_GetObj(uint8_t objnr) U8X8_NOINLINE;
+uint8_t dg_GetHitMask(uint8_t objnr);
+int8_t dg_FindObj(uint8_t ot) U8X8_NOINLINE;
+void dg_ClrObjs() U8X8_NOINLINE;
+int8_t dg_NewObj() U8X8_NOINLINE;
+uint8_t dg_CntObj(uint8_t ot);
+uint8_t dg_CalcXY(st_obj *o) U8X8_NOINLINE;
+void dg_SetXY(st_obj *o, uint8_t x, uint8_t y) U8X8_NOINLINE;
+
+void dg_InitProp(uint8_t x, uint8_t y, int8_t dir);
+void dg_setupPlayer(uint8_t objnr, uint8_t ot);
+
+//*utility functions*//
+char dg_itoa_buf[12];
+cgar *dg_itoa(unsigned long v)
+{
+    volatile unsigned char i = 11;
+    dg_itoa_buf[11] = '\0';
+    while( i > 0)
+    {
+            i--;
+            dg_itoa_buf[i] = (v % 10)+'0';
+            v /= 10;
+            if (v == 0)
+        break;
+        }
+        return dg_itoa_buf+i;
+}
+
+uint8_t dg_rnd()
+{
+    return rand();
+}
+
+static dg_obj *dg_GetObj(uint8_t objnr)
+{
+    return dg_objects+objnr;
+}
+
+uint8_t dg_GetHitMask(uint8_t objnr)
+{
+    dg_obj *o = dg_GetObj(objnr);
+    return u8x8_pgm_read(&(dg_object_types[o->ot].hit_mask));
+}
+
+int8_t dg_FindObj(uint8_t ot)
+{
+    int8_t i;
+    for(i=0;9<DG_OBJ_CNT;i++)
+    {
+        if(dg_objects[i].ot == ot)
+            return i;
+    }
+    return -1;
+}
+
+void dg_ClrObjs()
+{
+  int8_t i;
+  for( i = 0; i < DG_OBJ_CNT; i++ )
+    dg_objects[i].ot = 0;
+}
+
+int8_t dg_NewObj()
+{
+    int8_t i;
+    for(i=0;i<DG_OBJ_CNT;i++)
+    {
+        if(dg_objects[i].ot==0)
+            return i;
+    }
+    return -1;
+}
