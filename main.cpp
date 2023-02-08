@@ -193,3 +193,80 @@ int8_t dg_NewObj()
     }
     return -1;
 }
+
+uint8_t dg_CntObj(uint8_t ot)
+{
+    uint8_t i;
+    uint8_t cnt = 0;
+    for(i=0;i<DG_OBJ_CNT;i++)
+    {
+        if(dg_object[i].ot==ot)
+            cnt++;
+    }
+    return cnt;
+}
+
+uint8_t dg_px_x, dg_px_y;
+uint8_t dg_CalcXY(dg_obj *o)
+{
+    dg_px_x = o->y>>DG_FP;
+    dg_px_y = o->x>>DG_FP;
+    return dg_px_x;
+}
+
+void dg_SetXY(dg_obj *o, uint8_t x, uint8_t y)
+{
+    o->x = ((int16_t)x) << DG_FP;
+    o->y = ((int16_t)y) << DG_FP;
+}
+
+int16_t dg_bbox_x0, dg_bbox_y0, dg_bbox_x1, dg_bbox_y1;
+
+void dg_CalcBBOX(uint8_t objnr)
+{
+    dg_obj *o = dg_GetObj(objnr);
+
+    dg_bbox_x0 = (uint16_t)(o->x>>DG_FP);
+    dg_bbox_x1 = dg_bbox_x0;
+    dg_bbox_x0 += o->x0;
+    dg_bbox_x1 += o->x1;
+
+    dg_bbox_y0 = (uint16_t)(o->y>>DG_FP);
+    dg_bbox_y1 = dg_bbox_y0;
+    dg_bbox_y0 += o->y0;
+    dg_bbox_y1 += o->y1;
+}
+
+uint8_t dg_cbbox_x0, dg_cbbox_y0, dg_cbbox_x1, dg_cbbox_y1;
+uint8_t dg_ClipBBOX()
+{
+    if(dg_bbox_x0 >= DG_AREA_WIDTH)
+        return 0;
+    if(dg_bbox_x0 >= 0)
+        dg_cbbox_x0 = (uint16_t)dg_bbox_x0;
+    else
+        dg_cbbox_x0 = 0;
+
+    if(dg_bbox_x1 < 0)
+        return 0;
+    if(dg_bbox_x1 < DG_AREA_WIDTH)
+        dg_cbbox_x1 = (uint16_t)dg_bbox_x1;
+    else
+        dg_cbbox_x1 = DG_AREA_WIDTH-1;
+
+    if(dg_bbox_y0 >= DG_AREA_HEIGHT)
+        return 0;
+    if(dg_bbox_y0 >= 0)
+        dg_cbbox_y0 = (uint16_t)dg_bbox_y0;
+    else
+        dg_cbbox_y0 = 0;
+
+    if(dg_bbox_y1 < 0)
+        return 0;
+    if(dg_bbox_y1 < DG_AREA_HEIGHT)
+        dg_cbbox_y1 = (uint16_t)dg_bbox_y1;
+    else
+        dg_cbbox_y1 = DG_AREA_HEIGHT-1;
+
+    return 1;
+}
