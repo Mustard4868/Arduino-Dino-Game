@@ -22,6 +22,7 @@ struct _dg_ot_struct
     uint8_t duck_fn;
     uint8_t is_hit_fn;
     uint8_t destroy_fn;
+    uint8_t move_fn;
 };
 typedef struct _dg_ot_struct dg_ot;
 
@@ -44,8 +45,10 @@ typedef struct _dg_obj_struct dg_obj;
 #define DG_DRAW_BIRD 6
 
 #define DG_MOVE_X_PROP 0
+#define DG_JUMP_NONE 0
+#define DG_DUCK_NONE 0
 #define DG_JUMP_PLAYER 1
-#define DG_DUCK_PLAYER 2
+#define DG_DUCK_PLAYER 1
 
 #define DG_IS_HIT_NONE 0
 #define DG_IS_HIT_BBOX 1
@@ -64,8 +67,8 @@ typedef struct _dg_obj_struct dg_obj;
 //*graphics object*//
 u8g2_t *dg_u8g2;
 u8g2_uint_t u8g_height_minus_one;
-#define DG_AREA_HEIGHT(dg_u8g2->height-8)
-#define DG_AREA_WIDTH(dg_u8g2->width)
+#define DG_AREA_HEIGHT (dg_u8g2->height - 8)
+#define DG_AREA_WIDTH (dg_u8g2->width)
 
 //*object types*//
 const dg_ot dg_object_types[] U8X8_PROGMEM = 
@@ -83,7 +86,7 @@ const dg_ot dg_object_types[] U8X8_PROGMEM =
     /*5: DG_OT_BIRD*/
     {2,1,0, DG_DRAW_BIRD, DG_DRAW_BBOX, DG_MOVE_X_PROP, DG_IS_HIT_BBOX},
     /*6: DG_OT_PLAYER*/
-    {0,2,0, DG_DRAW_PLAYER, DG_JUMP_PLAYER, DG_DESTROY_END, DG_DUCK_PLAYER, DG_IS_HIT_BBOX, DG_IS_HIT_WALL},
+    {0,2,0, DG_DRAW_PLAYER, DG_JUMP_PLAYER, DG_DESTROY_END, DG_DUCK_PLAYER, DG_IS_HIT_BBOX},
 };
 
 //*list of all objects on screen*//
@@ -129,7 +132,7 @@ const uint8_t dg_bitmap_cactus_high[]  =
     /* 11000 */ 0x018,
     /* 1001 */ 0x009,
     /* 1001001 */ 0x049
-}
+};
 
 const uint8_t dg_bitmap_cactus_norm[] =
 {
@@ -137,7 +140,7 @@ const uint8_t dg_bitmap_cactus_norm[] =
   /* 101 */ 0x006,
   /* 10 */ 0x002,
   /* 10 */ 0x002
-}
+};
 
 const uint8_t dg_bitmap_cactus_wide[] =
 {
@@ -146,7 +149,7 @@ const uint8_t dg_bitmap_cactus_wide[] =
   /* 10010 */ 0x012,
   /* 1001100 */ 0x04C,
   /* 1001001 */  0x049
-}
+};
 
 const uint8_t dg_bitmap_player[] = 
 {
@@ -158,7 +161,7 @@ const uint8_t dg_bitmap_player[] =
     /*01011100*/ 0x05C,
     /*00011000*/ 0x018,
     /*00110000*/ 0x030
-}
+};
 
 const uint8_t dg_bitmap_bird[] =
 {
@@ -170,7 +173,7 @@ const uint8_t dg_bitmap_bird[] =
   /*  11111100*/  0x0FC,
   /* 111000  */  0x038,
   /* 11100 */ 0x01C,
-}
+};
 
 //*forward definitions*//
 uint8_t dg_rnd() U8X8_NOINLINE;
@@ -181,8 +184,8 @@ int8_t dg_FindObj(uint8_t ot) U8X8_NOINLINE;
 void dg_ClrObjs() U8X8_NOINLINE;
 int8_t dg_NewObj() U8X8_NOINLINE;
 uint8_t dg_CntObj(uint8_t ot);
-uint8_t dg_CalcXY(st_obj *o) U8X8_NOINLINE;
-void dg_SetXY(st_obj *o, uint8_t x, uint8_t y) U8X8_NOINLINE;
+uint8_t dg_CalcXY(dg_obj *o) U8X8_NOINLINE;
+void dg_SetXY(dg_obj *o, uint8_t x, uint8_t y) U8X8_NOINLINE;
 
 void dg_JumpStep(uint8_t is_jump) U8X8_NOINLINE;
 void dg_DuckStep(uint8_t is_duck) U8X8_NOINLINE;
@@ -192,7 +195,7 @@ void dg_setupPlayer(uint8_t objnr, uint8_t ot);
 
 //*utility functions*//
 char dg_itoa_buf[12];
-cgar *dg_itoa(unsigned long v)
+char *dg_itoa(unsigned long v)
 {
     volatile unsigned char i = 11;
     dg_itoa_buf[11] = '\0';
@@ -258,7 +261,7 @@ uint8_t dg_CntObj(uint8_t ot)
     uint8_t cnt = 0;
     for(i=0;i<DG_OBJ_CNT;i++)
     {
-        if(dg_object[i].ot==ot)
+        if(dg_objects[i].ot==ot)
             cnt++;
     }
     return cnt;
@@ -344,6 +347,13 @@ uint8_t dg_IsOut(uint8_t objnr)
     return 0;
 }
 
+void dg_Disappear(uint8_t objnr)
+{
+  dg_obj *o = dg_GetObj(objnr);
+  dg_player_score += u8x8_pgm_read(&(dg_object_types[o->ot].score));
+  o->ot = 0;
+}
+
 //*type dependent member functions*//
 void dg_Move(uint8_t objnr)
 {
@@ -360,13 +370,6 @@ void dg_Move(uint8_t objnr)
         case DG_JUMP_PLAYER:
             o->y = dg_player_pos<<DG_FP;
             break;
-        case DG_DUCK_PLAYER:
-            o->y = dg_player_pos<<DG_FP;
-            break;
-        case DG_MOVE_WALL:
-            o->x -=1;
-            o->x -= (dg_difficulty>>1);
-            break;
     }
 }
 
@@ -381,7 +384,7 @@ void dg_DrawBBOX(uint8_t objnr)
     y0 = u8g_height_minus_one - dg_cbbox_y0;
     y1 = u8g_height_minus_one - dg_cbbox_y1;
 
-    u8g2_drawFrame(dg_u8g2, dg_cbbox_x0, y1, dg_cbbox_x1-dg_cbbox_x0+1, y0-y1+1);
+    u8g2_DrawFrame(dg_u8g2, dg_cbbox_x0, y1, dg_cbbox_x1-dg_cbbox_x0+1, y0-y1+1);
 }
 
 #ifdef FN_IS_NOT_IN_USE
@@ -414,7 +417,7 @@ void dg_DrawObj(uint8_t objnr)
         case DG_DRAW_CACTUS_HIGH:
             dg_DrawBitmap(objnr, dg_bitmap_cactus_high,o->x1-o->x0+1,8);
             break;
-        case DG_DRAW_CACTUS_NORM
+        case DG_DRAW_CACTUS_NORM:
             dg_DrawBitmap(objnr, dg_bitmap_cactus_norm,o->x1-o->x0+1,4);
             break;
         case DG_DRAW_CACTUS_WIDE:
@@ -454,14 +457,14 @@ void dg_Destroy(uint8_t objnr)
         case DG_DESTROY_NONE:
             break;
         case DG_DESTROY_END:
-            dg_Dissapear(objnr);
+            dg_Disappear(objnr);
             dg_state = DG_STATE_END;
             o->tmp = 0;
             break;
     }
 }
 
-uint8_t dg_isHit(uint8_t objnr, uint8_t x, uint8_t y, uint8_t player_mask)
+uint8_t dg_IsHit(uint8_t objnr, uint8_t x, uint8_t y, uint8_t player_mask)
 {
     uint8_t hit_mask = dg_GetHitMask(objnr);
     dg_obj *o;
@@ -486,6 +489,7 @@ uint8_t dg_isHit(uint8_t objnr, uint8_t x, uint8_t y, uint8_t player_mask)
 }
 
 uint8_t dg_jump_player = 0;
+uint8_t dg_duck_player = 0;
 uint8_t dg_jump_period = 2;
 uint8_t dg_manual_jump_delay = dg_jump_period++;
 uint8_t dg_is_jump_last_value = 0;
@@ -498,7 +502,7 @@ void dg_JumpStep(uint8_t is_jump)
     }
     else
     {
-        if dg_is_jump_last_value == 0
+        if (dg_is_jump_last_value == 0)
     if (is_jump != 0)
         dg_jump_player = 0;
     }
@@ -528,7 +532,7 @@ void dg_InitProp(uint8_t x, uint8_t y, int8_t dir)
     if(dir==0)
     {
         o->tmp = 0;
-        if(st_rnd()&1)
+        if(dg_rnd()&1)
         {
             if(dg_rnd()&1)
         o->tmp++;
@@ -598,7 +602,7 @@ void dg_InitDeltaWall()
         {
             if(dg_objects[i].ot == DG_OT_WALL_SOLID)
             {
-        cnt++
+        cnt++;
         if(max_x<(dg_objects[i].x>>DG_FP))
             max_x=(dg_objects[i].x>>DG_FP);
            }
@@ -606,7 +610,7 @@ void dg_InitDeltaWall()
     }
 }
 
-void dg_InitDeltaProp
+void dg_InitDeltaProp()
 {
     uint8_t i;
     uint8_t cnt = 0;
@@ -684,7 +688,7 @@ void dg_draw(uint8_t fps)
         case DG_STATE_INITIALIZE:
             u8g2_SetFont(dg_u8g2, u8g_font_4x6r);
             u8g2_SetDrawColor(dg_u8g2, 1);
-            u8g2_DrawStr(dg_u8g2, 0, u8g_height_minus_one - (dg_u8g2->height-6)/2 "PRESS SENSOR");
+            u8g2_DrawStr(dg_u8g2, 0, u8g_height_minus_one - (dg_u8g2->height-6)/2, "PRESS SENSOR");
             u8g2_DrawHLine(dg_u8g2, dg_u8g2->width-dg_to_diff_cnt-10, u8g_height_minus_one - (dg_u8g2->height-6)/2+1, 11);
             break;
         case DG_STATE_GAME:
@@ -693,7 +697,7 @@ void dg_draw(uint8_t fps)
         case DG_STATE_END:
         case DG_STATE_IEND:
             u8g2_SetFont(dg_u8g2, u8g_font_4x6r);
-            u8g2_setDrawColor(dg_u8g2, 1);
+            u8g2_SetDrawColor(dg_u8g2, 1);
             u8g2_DrawStr(dg_u8g2, 0, u8g_height_minus_one - (dg_u8g2->height-6)/2, "Game Over");
             u8g2_DrawStr(dg_u8g2, 50, u8g_height_minus_one - (dg_u8g2->height-6)/2, dg_itoa(dg_player_score));
             u8g2_DrawStr(dg_u8g2, 75, u8g_height_minus_one - (dg_u8g2->height-6)/2, dg_itoa(dg_highscore));
@@ -731,7 +735,7 @@ void dg_StepInGame(uint8_t player_pos, uint8_t is_jump, uint8_t is_duck)
     else if(player_pos >= 192)
         dg_player_pos = DG_AREA_HEIGHT-2-1;
     else   
-        dg_player_pos = ((uint16_t)((player_pos-64)) * (uint16_t)(ST_AREA_HEIGHT02))/128;
+        dg_player_pos = ((uint16_t)((player_pos-64)) * (uint16_t)(DG_AREA_HEIGHT-2))/128;
     dg_player_pos+=1;
     for(i=0;i<DG_OBJ_CNT;i++)
     dg_Move(i);
@@ -739,16 +743,16 @@ void dg_StepInGame(uint8_t player_pos, uint8_t is_jump, uint8_t is_duck)
     for(i=0;i<DG_OBJ_CNT;i++)
         if(dg_objects[i].ot != 0)
             if(dg_IsOut(i) != 0)
-    dg_Dissapear(i);
+    dg_Disappear(i);
 
     for(i=0;i<DG_OBJ_CNT;i++)
     {
         player_mask = dg_GetPlayerMask(i);
         if(player_mask != 0)
             if(dg_CalcXY(dg_objects+i) != 0)
-        for(k=0; j<DG_OBJ_CNT;j++)
+        for(j=0; j<DG_OBJ_CNT;j++)
             if(i != j)
-                if(dg_IsHit(jm dg_px_x, dg_px_y, player_mask) != 0)
+                if(dg_IsHit(j, dg_px_x, dg_px_y, player_mask) != 0)
                 {
                     dg_Destroy(i);
                 }
@@ -756,11 +760,11 @@ void dg_StepInGame(uint8_t player_pos, uint8_t is_jump, uint8_t is_duck)
 
     dg_JumpStep(is_jump);
     for(i=0;i<DG_OBJ_CNT;i++)
-        dg_Jump(i);
+        dg_Move(i);
 
     dg_DuckStep(is_duck);
     for(i=0;i<DG_OBJ_CNT;i++)
-        dg_Duck(i);
+        dg_Move(i);
 
     dg_InitDelta();
 
@@ -781,8 +785,8 @@ void dg_Step(uint8_t player_pos, uint8_t is_jump, uint8_t is_duck)
             u8g2.firstPage();
             do{
                 u8g2.setFont(u8g2_font_6x10_tr);
-                u8g2.drawStr(20,20,"Press 'X' to play!")
-            }while(u8g2.nextPage())
+                u8g2.drawStr(20,20,"Press 'X' to play!");
+            }while(u8g2.nextPage());
             while(digitalRead(button_x)!=LOW){}//wait for input
             dg_state = DG_STATE_INITIALIZE;
             break;
@@ -822,7 +826,6 @@ uint8_t y = 128;
 void loop() {
     u8g2.setFont(u8g2_font_6x10_tr);
     u8g2.setFontDirection(0);
-    u8g2.setFontRefheightAll();
 
     dg_Setup(u8g2.getU8g2());
     for(;;)
@@ -830,7 +833,7 @@ void loop() {
         u8g2.firstPage();
         do
         {
-            dg_Draw(0);
+            dg_draw(0);
         }while(u8g2.nextPage());
 
         if(digitalRead(button_x)){
