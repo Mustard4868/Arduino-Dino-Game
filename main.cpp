@@ -16,7 +16,7 @@ struct _dg_ot_struct
 {
     uint8_t player_mask;
     uint8_t hit_mask;
-    uint8_t points;
+    uint8_t score;
     uint8_t draw_fn;
     uint8_t jump_fn;
     uint8_t duck_fn;
@@ -42,7 +42,7 @@ typedef struct _dg_obj_struct dg_obj;
 #define DG_DRAW_CACTUS_HIGH 5
 #define DG_DRAW_BIRD 6
 
-#define DG_MOVE_X_SPEED 0
+#define DG_MOVE_X_PROP 0
 #define DG_JUMP_PLAYER 1
 #define DG_DUCK_PLAYER 2
 
@@ -81,3 +81,8 @@ dg_obj dg_objects[DG_OBJ_CNT];
 
 //*about player model*//
 uint8_t dg_player_pos;
+
+//*points*//
+#define DG_SCORE_MULTIPLIER 1
+uint16_t dg_player_score;
+uint16_t dg_highscore = 0;
