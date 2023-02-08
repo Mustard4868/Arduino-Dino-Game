@@ -60,8 +60,8 @@ typedef struct _dg_obj_struct dg_obj;
 //*graphics object*//
 u8g2_t *dg_u8g2;
 u8g2_uint_t u8g_height_minus_one;
-#define AREA_HEIGHT(dg_u8g2->height-8)
-#define AREA_WIDTH(dg_u8g2->width)
+#define DG_AREA_HEIGHT(dg_u8g2->height-8)
+#define DG_AREA_WIDTH(dg_u8g2->width)
 
 //*object types*//
 const dg_ot dg_object_types[] U8X8_PROGMEM = 
@@ -115,8 +115,58 @@ uint8_t dg_difficulty = 1;
 uint16_t dg_to_diff_cnt = 0;
 
 //*bitmaps*//
+const uint8_t dg_bitmap_cactus_high[]  =
+{
+    /* 100010 */ 0x022,
+    /* 10101010 */ 0x0AA,
+    /* 1001010 */ 0x04A,
+    /* 1001100 */ 0x04c,
+    /* 101000 */ 0x028,
+    /* 11000 */ 0x018,
+    /* 1001 */ 0x009,
+    /* 1001001 */ 0x049
+}
 
+const uint8_t dg_bitmap_cactus_norm[] =
+{
+  /* 100 */  0x004,
+  /* 101 */ 0x006,
+  /* 10 */ 0x002,
+  /* 10 */ 0x002
+}
 
+const uint8_t dg_bitmap_cactus_wide[] =
+{
+  /* 100000 */ 0x020,
+  /* 101010 */ 0x02A,
+  /* 10010 */ 0x012,
+  /* 1001100 */ 0x04C,
+  /* 1001001 */  0x049
+}
+
+const uint8_t dg_bitmap_player[] = 
+{
+    /*00000000*/ 0x000,
+    /*01100000*/ 0x060,
+    /*10110000*/ 0x0B0,
+    /*11111011*/ 0x0FB,
+    /*00111110*/ 0x03E,
+    /*01011100*/ 0x05C,
+    /*00011000*/ 0x018,
+    /*00110000*/ 0x030
+}
+
+const uint8_t dg_bitmap_bird[] =
+{
+  /* 0000000 */ 0x000,
+  /*  1100000 */ 0x060,
+  /*  11110110 */  0x0F6,
+  /*  111101 */ 0x03D,
+  /*  10011111 */ 0x09F,
+  /*  11111100*/  0x0FC,
+  /* 111000  */  0x038,
+  /* 11100 */ 0x01C,
+}
 
 //*forward definitions*//
 uint8_t dg_rnd() U8X8_NOINLINE;
@@ -269,4 +319,104 @@ uint8_t dg_ClipBBOX()
         dg_cbbox_y1 = DG_AREA_HEIGHT-1;
 
     return 1;
+}
+
+//*universal member functions*//
+uint8_t dg_IsOut(uint8_t objnr)
+{
+    dg_CalcBBOX(objnr);
+    if(dg_bbox_x0 >= DG_AREA_WIDTH)
+        return 1;
+    if(dg_bbox_x1 < 0)
+        return 1;
+    if(dg_bbox_y0 >= DG_AREA_HEIGHT)
+        return 1;
+    if(dg_bbox_y1 <0)
+        return 1;
+    return 0;
+}
+
+//*type dependent member functions*//
+void dg_Move(uint8_t objnr)
+{
+    dg_obj *o = dg_GetObj(objnr);
+    switch(u8x8_pgm_read(&(dg_object_types[o->ot].move_fn)))
+    {
+        case DG_MOVE_X_PROP:
+            o->x -= (1<<DG_FP)/8;
+            o->x -= dg_difficulty;
+            o->y += (int16_t)o->tmp;
+            if(o->y >= ((DG_AREA_HEIGHT-1) << DG_FP) || o->y <= 0)
+        o->tmp = - o->tmp;
+            break;
+        case DG_JUMP_PLAYER:
+            o->y = dg_player_pos<<DG_FP;
+            break;
+        case DG_DUCK_PLAYER:
+            o->y = dg_player_pos<<DG_FP;
+            break;
+        case DG_MOVE_WALL:
+            o->x -=1;
+            o->x -= (dg_difficulty>>1);
+            break;
+    }
+}
+
+void dg_DrawBBOX(uint8_t objnr)
+{
+    uint8_t y0, y1;
+    dg_CalcBBOX(objnr);
+    if(dg_ClipBBOX() == 0)
+        return;
+    
+    u8g2_SetDrawColor(dg_u8g2, 1);
+    y0 = u8g_height_minus_one - dg_cbbox_y0;
+    y1 = u8g_height_minus_one - dg_cbbox_y1;
+
+    u8g2_drawFrame(dg_u8g2, dg_cbbox_x0, y1, dg_cbbox_x1-dg_cbbox_x0+1, y0-y1+1);
+}
+
+#ifdef FN_IS_NOT_IN_USE
+void dg_DrawFilledBox(uint8_t objnr)
+{
+    dg_CalcBBOX(objnr);
+    if(dg_ClipBBOX() == 0)
+        return;
+    dog_SetBox(dg_cbbox_x0, dg_cbbox_y0, dg_cbbox_x1, dg_cbbox_y1);
+}
+#endif
+
+void dg_DrawBitmap(uint8_t objnr, const uint8_t * bm, uint8_t w, uint8_t h)
+{
+    dg_CalcBBOX(objnr);
+
+    u8g2_DrawBitmap(dg_u8g2, dg_bbox_x0, u8g_height_minus_one - dg_bbox_y1, (w+7)/8, h, bm);
+}
+
+void dg_DrawObj(uint8_t objnr)
+{
+    dg_obj *o = dg_GetObj(objnr);
+    switch(u8x8_pgm_read(&(dg_object_types[o->ot].draw_fn)))
+    {
+        case DG_DRAW_NONE:
+            break;
+        case DG_DRAW_BBOX:
+            dg_DrawBBOX(objnr);
+            break;
+        case DG_DRAW_CACTUS_HIGH:
+            dg_DrawBitmap(objnr, dg_bitmap_cactus_high,o->x1-o->x0+1,8);
+            break;
+        case DG_DRAW_CACTUS_NORM
+            dg_DrawBitmap(objnr, dg_bitmap_cactus_norm,o->x1-o->x0+1,4);
+            break;
+        case DG_DRAW_CACTUS_WIDE:
+            dg_DrawBitmap(objnr, dg_bitmap_cactus_wide,o->x1-o->x0+1,5);
+            break;
+        case DG_DRAW_PLAYER:
+            dg_DrawBitmap(objnr, dg_bitmap_player,o->x1-o->x0+1,8);
+            break;
+        case DG_DRAW_BIRD:
+            dg_DrawBitmap(objnr, dg_bitmap_bird,o->x1-o->x0+1,8);
+            break;
+    }
 }
