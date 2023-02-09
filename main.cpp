@@ -2,10 +2,27 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <U8g2lib.h>
+#include <MAX30105.h>
+#include <heartRate.h>
 
+MAX30105 particleSensor;
 U8G2_ST7920_128X64_1_HW_SPI u8g2(U8G2_R0, 10, 8);
 
+const byte RATE_SIZE = 4;
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+long lastBeat = 0;
+long currentMillis;
+long initMillis;
+
+float beatsPerMinute;
+int beatAvg;
+
+int BPM;
+int AVG;
+
 uint8_t button_jump = 4;
+int highscore = 0;  //highscore is reserved
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -69,16 +86,37 @@ void setup()
     u8g2.setBitmapMode(1);
     u8g2.enableUTF8Print();
 
+    //particleSensor.setup();
+    //particleSensor.setPulseAmplitudeRed(0x0A);
+    //particleSensor.setPulseAmplitudeGreen(0);
+
+    Serial.begin(9600);
     choiceMenu();
 
     while(1)
     {
+
         if(digitalRead(button_jump) == HIGH)
-        {
-            prepare();
+        {   
+            delay(300); //prevent instant jumping
+                prepare();
+                for(;;)
+                {   
+                    float initMillis;
+                    float currentMillis = millis();
+                    float initInterval = 5000;
+
+                    if((currentMillis - initMillis) > initInterval)
+                    {
+                      play();
+                      initMillis = currentMillis;
+                      break;
+                    }
+                }
         }
     }
 }
+
 
 void choiceMenu()
 {
@@ -97,14 +135,15 @@ void choiceMenu()
 }
 
 void prepare()
-{
+{   //in here we should display countdown and calibrate the sensor
+    initMillis = millis();
     u8g2.firstPage();
     do
-    {
-        u8g2.setFont(u8g2_font_trixel_square_tn);
-        u8g2.setCursor(50,30);
-        /*display countdown from 3*/
-        play();
+    {   
+        u8g2.setFont(u8g2_font_trixel_square_tr);
+        u8g2.setCursor(10,45);
+        u8g2.println("Initializing Sensor...");
+        u8g2.display();
     }   while(u8g2.nextPage());
 }
 
@@ -119,12 +158,20 @@ void play()
     uint16_t dino_y = DINO_INIT_Y;
 
     uint8_t jump = 0;
-    uint8_t score = 0;
-    uint8_t highscore = 0;
+    int score = 0;
+    float f_score = 0;
+    /*highscore is near headers*/
+
+    float multiplier = 1;
+
+    unsigned long startMillis = millis();
+
+    float previousMillis = 0;
+    float interval = 50;
+    float newInterval = interval;
 
     for(;;)
     {   
-        delay(1);
         if(digitalRead(button_jump) == HIGH)
         {
             if(jump == 0)
@@ -139,7 +186,6 @@ void play()
             if(dino_y == (DINO_INIT_Y-JUMP_PIXEL))
             {
                 jump = 2;
-                score++;
             }
         }
         else if(jump == 2)
@@ -151,40 +197,86 @@ void play()
             }
         }
 
-        if(tree_x <= (DINO_INIT_X+DINO_WIDTH_PX) && tree_x >= (DINO_INIT_X + (DINO_WIDTH_PX/2)))
+        /*score*/
+        unsigned long gameMillis = millis();
+        score = ((gameMillis-startMillis)/100);
+        f_score = score;
+
+        if(score > highscore)
+        {
+          highscore = score;
+        }
+
+        if(tree_x <= (DINO_INIT_X+DINO_WIDTH_PX-8) && tree_x >= (DINO_INIT_X + ((DINO_WIDTH_PX-8)/2)))
             if(dino_y >= (DINO_INIT_Y-3))
             {
-                gameEnd(score);
+                gameEnd(score, highscore);
                 break;
             }
         
-        if(tree1_x <= (DINO_INIT_X+DINO_WIDTH_PX) && tree_x >= (DINO_INIT_X + (DINO_WIDTH_PX/2)))
+        if(tree1_x <= (DINO_INIT_X+DINO_WIDTH_PX-8) && tree_x >= (DINO_INIT_X + ((DINO_WIDTH_PX-8)/2)))
             if(dino_y >= (DINO_INIT_Y-3))
             {   
-                gameEnd(score);
+                gameEnd(score, highscore);
                 break;
             }
         
         u8g2.firstPage();
         do
         {   
+            /*score*/
+            u8g2.setFont(u8g2_font_trixel_square_tr);
+            u8g2.setCursor(64,10);
+            u8g2.print("Score: ");
+            u8g2.print(score);
+
             moveTree(&tree_x, tree_type);
             moveTree(&tree1_x, tree_type1);
             moveDino(&dino_y);
             u8g2.drawLine(0,54,127,54);
 
-            tree_x--;
-            tree1_x--;
+            /*score multiplier x stress multiplier*/
+            //if(score>100)
+            //{
+            //  multiplier = score/100;
+            //}
+            //interval_mx = interval/multiplier;
+            //!!! OR !!!
+            //find way to reduce scoring with multiplier (not very exciting) 
+
+            float trigger = 50;
+            if(f_score >= trigger)
+            {
+              multiplier = 1+((f_score/trigger)/8);
+              newInterval = interval/multiplier;
+
+              //multiplier max = 2
+              if(multiplier >= 2)
+              {
+                multiplier = 2;
+              }
+            }
+
+            float currentMillis = millis();
+
+            if((currentMillis - previousMillis) > newInterval)
+            {
+              tree_x--;
+              tree1_x--;
+              previousMillis = currentMillis;
+            }
+
+            int score = (int)f_score;
 
             if(tree_x == 0)
             {
-                tree_x = 127;
+                tree_x = 128;
                 tree_type = random(0,2);
             }
 
             if(tree1_x == 0)
             {
-                tree1_x = 195;
+                tree1_x = 255;
                 tree_type1 = random(0,2);
             }
             u8g2.display();
@@ -192,7 +284,7 @@ void play()
     }   
 }
 
-void gameEnd(int score)
+void gameEnd(int score, int highscore)
 {
     u8g2.clearDisplay();
     u8g2.firstPage();
@@ -207,10 +299,10 @@ void gameEnd(int score)
         u8g2.print("Score: ");
         u8g2.print(score);
 
-        /*highscore
-        u8g2.setCursor(10,40);
+        /*highscore*/
+        u8g2.setCursor(50,35);
         u8g2.print("Highscore: ");
-        u8g2.print(highscore);*/
+        u8g2.print(highscore);
 
         u8g2.setCursor(10,45);
         u8g2.println("Press X To Play Again!");
@@ -235,15 +327,43 @@ void moveDino(int16_t *y)
     u8g2.drawBitmap(DINO_INIT_X, *y, DINO_WIDTH, DINO_HEIGHT, dino1);
 }
 
-void loop()
-{
+void loop() {
+  long irValue = particleSensor.getIR();
 
-}
+  if (checkForBeat(irValue) == true) {
+    long delta = millis() - lastBeat;
+    lastBeat = millis();
 
-void displayScore(int score)
-{
-    u8g2.setFont(u8g2_font_trixel_square_tr);
-    u8g2.setCursor(64,10);
-    u8g2.print("Score: ");
-    u8g2.print(score);
+    beatsPerMinute = 60 / (delta / 1000.0);
+
+    if (beatsPerMinute < 255 && beatsPerMinute > 20) {
+      rates[rateSpot++] = (byte)beatsPerMinute;
+      rateSpot %= RATE_SIZE;
+
+      beatAvg = 0;
+      for (byte x = 0 ; x < RATE_SIZE ; x++)
+        beatAvg += rates[x];
+      beatAvg /= RATE_SIZE;
+    }
+  }
+
+  unsigned long currentTime = millis();
+
+  static unsigned long lastTimeSerialOutput = 0;
+  const unsigned long serialOutputInterval = 1000;  ///* !!!THIS IS THE DELAY!!! *///
+  if (currentTime - lastTimeSerialOutput >= serialOutputInterval)
+  {
+    lastTimeSerialOutput = currentTime;
+    Serial.print("IR=");
+    Serial.print(irValue);
+    Serial.print(", BPM=");
+    Serial.print(beatsPerMinute);
+    Serial.print(", Avg BPM=");
+    Serial.print(beatAvg);
+
+    if (irValue < 50000)
+      Serial.print(" No finger?");
+
+    Serial.println();
+  }
 }
